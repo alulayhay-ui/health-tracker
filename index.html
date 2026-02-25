@@ -27,12 +27,21 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen pb-10">
 
+    <!-- 載入中畫面 -->
+    <div id="loadingScreen" class="fixed inset-0 bg-slate-100 z-50 flex flex-col items-center justify-center transition-opacity duration-300">
+        <i class="fa-solid fa-cloud-arrow-up fa-bounce text-teal-600 text-4xl mb-4"></i>
+        <p class="text-slate-600 font-medium tracking-wide">連線雲端中...</p>
+    </div>
+
     <!-- 頂部導覽列 -->
     <header class="bg-teal-600 text-white shadow-md sticky top-0 z-10">
         <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
             <div class="flex items-center">
                 <i class="fa-solid fa-notes-medical text-2xl mr-2"></i>
-                <h1 class="text-xl font-bold tracking-wide" id="headerTitle">每日健康紀錄</h1>
+                <h1 class="text-xl font-bold tracking-wide flex items-center" id="headerTitle">
+                    每日健康紀錄
+                    <i id="cloudStatusIcon" class="fa-solid fa-cloud text-sm text-teal-200 ml-2 hidden" title="已啟用雲端同步"></i>
+                </h1>
             </div>
             <!-- 切換使用者按鈕與設定按鈕 (預設隱藏，登入後顯示) -->
             <div class="flex space-x-2">
@@ -209,8 +218,15 @@
     </div>
 
     <!-- 應用程式邏輯 -->
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
         // DOM 元素選取
+        const loadingScreen = document.getElementById('loadingScreen');
+        const cloudStatusIcon = document.getElementById('cloudStatusIcon');
+        
         const userScreen = document.getElementById('userScreen');
         const appContainer = document.getElementById('appContainer');
         const userList = document.getElementById('userList');
@@ -233,40 +249,91 @@
         const reminderText = document.getElementById('reminderText');
 
         // 資料庫與狀態
-        // healthData 結構: { "王小明": { "2023-10-25": {weight: 60, ...} }, "李小華": { ... } }
         let healthData = {}; 
         let users = [];
         let userSettings = {}; 
         let currentUser = null;
 
-        // 初始化系統
-        function initSystem() {
-            // 讀取 localStorage 內的資料
-            healthData = JSON.parse(localStorage.getItem('healthDataV2')) || {};
-            users = JSON.parse(localStorage.getItem('usersList')) || [];
-            userSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+        // Firebase 狀態
+        let isCloudActive = false;
+        let db = null;
+        let currentUserId = null;
+        let appId = null;
 
+        // 將函數綁定到 window 以供 HTML 內的 onclick 使用
+        window.showUserScreen = showUserScreen;
+        window.createNewUser = createNewUser;
+        window.login = login;
+        window.saveData = saveData;
+        window.jumpToDate = jumpToDate;
+        window.openSettings = openSettings;
+        window.closeSettings = closeSettings;
+        window.saveSettings = saveSettings;
+        window.addToCalendar = addToCalendar;
+
+        // 初始化系統 (包含 Firebase 驗證)
+        async function initSystem() {
+            // 嘗試連線雲端資料庫 (相容於 Canvas 環境)
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                try {
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    const auth = getAuth(app);
+                    db = getFirestore(app);
+                    appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    isCloudActive = true;
+
+                    // 監聽身分驗證狀態
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            currentUserId = user.uid;
+                            cloudStatusIcon.classList.remove('hidden');
+                            await loadDataState();
+                            finishLoading();
+                        }
+                    });
+
+                    // 執行登入
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    return; // 等待 onAuthStateChanged 觸發 finishLoading
+                } catch (e) {
+                    console.error("雲端連線失敗，自動切換至本機模式:", e);
+                    isCloudActive = false;
+                }
+            }
+            
+            // 如果沒有雲端設定，直接使用本機資料
+            await loadDataState();
+            finishLoading();
+        }
+
+        // 結束載入並初始化 UI
+        function finishLoading() {
             // 資料遷移 (相容舊版本單一使用者的資料)
             const oldData = JSON.parse(localStorage.getItem('healthData'));
             if (oldData && !localStorage.getItem('healthDataV2')) {
                 const dates = Object.keys(oldData);
                 if (dates.length > 0 && dates[0].includes('-')) {
-                    // 偵測到舊資料，將其歸類到具體使用者下
                     dates.forEach(date => {
                         const record = oldData[date];
-                        // 移除「預設使用者」邏輯，只遷移有明確名稱的舊紀錄
                         if (record.user) {
                             const u = record.user;
                             if (!users.includes(u)) users.push(u);
                             if (!healthData[u]) healthData[u] = {};
-                            
                             healthData[u][date] = { ...record };
-                            delete healthData[u][date].user; // 移除舊格式中的 user 欄位
+                            delete healthData[u][date].user;
                         }
                     });
-                    saveToLocalStorage();
+                    saveDataState();
                 }
             }
+
+            loadingScreen.classList.add('opacity-0');
+            setTimeout(() => loadingScreen.classList.add('hidden'), 300);
 
             // 檢查是否已有登入的紀錄
             const lastUser = localStorage.getItem('currentUser');
@@ -282,16 +349,55 @@
             });
         }
 
-        // 儲存所有資料到 LocalStorage
-        function saveToLocalStorage() {
+        // 統一資料讀取 (雲端與本機同步)
+        async function loadDataState() {
+            // 優先從本機讀取，確保速度與離線可用性
+            healthData = JSON.parse(localStorage.getItem('healthDataV2')) || {};
+            users = JSON.parse(localStorage.getItem('usersList')) || [];
+            userSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
+
+            // 如果有連線雲端，從雲端拉取最新資料覆蓋
+            if (isCloudActive && db && currentUserId) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUserId, 'healthApp', 'mainState');
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        healthData = data.healthData || {};
+                        users = data.users || [];
+                        userSettings = data.userSettings || {};
+                        
+                        // 更新回本機以防下次離線
+                        localStorage.setItem('healthDataV2', JSON.stringify(healthData));
+                        localStorage.setItem('usersList', JSON.stringify(users));
+                        localStorage.setItem('userSettings', JSON.stringify(userSettings));
+                    }
+                } catch (e) {
+                    console.error("從雲端讀取資料失敗:", e);
+                }
+            }
+        }
+
+        // 統一儲存所有資料 (雲端與本機同步)
+        async function saveDataState() {
+            // 永遠備份到本機 LocalStorage
             localStorage.setItem('healthDataV2', JSON.stringify(healthData));
             localStorage.setItem('usersList', JSON.stringify(users));
             localStorage.setItem('userSettings', JSON.stringify(userSettings));
+
+            // 同步到雲端 Firestore
+            if (isCloudActive && db && currentUserId) {
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'users', currentUserId, 'healthApp', 'mainState');
+                    await setDoc(docRef, { healthData, users, userSettings });
+                } catch (e) {
+                    console.error("同步到雲端失敗:", e);
+                }
+            }
         }
 
         /* --- 使用者管理邏輯 --- */
         
-        // 顯示使用者選擇畫面
         function showUserScreen() {
             currentUser = null;
             localStorage.removeItem('currentUser');
@@ -299,13 +405,15 @@
             appContainer.classList.add('hidden');
             switchUserBtn.classList.add('hidden');
             settingsBtn.classList.add('hidden');
-            headerTitle.textContent = '每日健康紀錄';
+            
+            // 保持雲端圖示
+            const cloudIconHtml = isCloudActive ? '<i class="fa-solid fa-cloud text-sm text-teal-200 ml-2" title="已啟用雲端同步"></i>' : '';
+            headerTitle.innerHTML = `每日健康紀錄${cloudIconHtml}`;
             userScreen.classList.remove('hidden');
 
             renderUserList();
         }
 
-        // 渲染使用者列表按鈕
         function renderUserList() {
             userList.innerHTML = '';
             if (users.length === 0) {
@@ -325,8 +433,7 @@
             });
         }
 
-        // 創建新使用者
-        function createNewUser() {
+        async function createNewUser() {
             const name = newUserNameInput.value.trim();
             if (!name) {
                 alert("請輸入使用者姓名！");
@@ -338,14 +445,13 @@
             }
 
             users.push(name);
-            healthData[name] = {}; // 初始化該使用者的資料區塊
-            saveToLocalStorage();
+            healthData[name] = {};
+            await saveDataState(); // 同步儲存
             
             newUserNameInput.value = '';
-            login(name); // 建立後直接登入
+            login(name);
         }
 
-        // 登入使用者並進入主畫面
         function login(userName) {
             currentUser = userName;
             localStorage.setItem('currentUser', currentUser);
@@ -354,14 +460,15 @@
             appContainer.classList.remove('hidden');
             switchUserBtn.classList.remove('hidden');
             settingsBtn.classList.remove('hidden');
-            headerTitle.textContent = `${currentUser} 的紀錄`;
+            
+            const cloudIconHtml = isCloudActive ? '<i class="fa-solid fa-cloud text-sm text-teal-200 ml-2" title="已啟用雲端同步"></i>' : '';
+            headerTitle.innerHTML = `${currentUser} 的紀錄${cloudIconHtml}`;
 
             initAppForUser();
         }
 
         /* --- 健康紀錄應用邏輯 --- */
 
-        // 初始化當前使用者的應用程式狀態
         function initAppForUser() {
             const today = new Date();
             const offset = today.getTimezoneOffset();
@@ -374,13 +481,10 @@
             renderHistory();
         }
 
-        // 載入特定日期的資料到表單中
         function loadDataForDate(dateStr) {
-            // 檢查是否為設定的打針日
             const dateObj = new Date(dateStr);
             const settings = userSettings[currentUser] || {};
             
-            // 預設打針日為星期二 (2)，如果有設定則讀取設定。-1 代表關閉提醒
             const injectionDay = settings.injectionDay !== undefined ? parseInt(settings.injectionDay) : 2;
             const injectionTime = settings.injectionTime || '09:00';
 
@@ -391,7 +495,6 @@
                 injectionReminder.classList.add('hidden');
             }
 
-            // 更新標題顯示
             const today = new Date();
             const offset = today.getTimezoneOffset();
             const todayStr = new Date(today.getTime() - (offset*60*1000)).toISOString().split('T')[0];
@@ -402,7 +505,6 @@
                 recordTitle.innerHTML = `<i class="fa-regular fa-calendar-check text-teal-500 mr-2"></i>${dateObj.getMonth() + 1}月${dateObj.getDate()}日 紀錄`;
             }
 
-            // 確保該使用者有資料物件
             if (!healthData[currentUser]) healthData[currentUser] = {};
             
             const data = healthData[currentUser][dateStr];
@@ -413,7 +515,6 @@
                 dinnerInput.value = data.dinner || '';
                 exerciseInput.value = data.exercise || '';
             } else {
-                // 清空表單
                 weightInput.value = '';
                 breakfastInput.value = '';
                 lunchInput.value = '';
@@ -422,12 +523,10 @@
             }
         }
 
-        // 儲存資料
-        function saveData() {
+        async function saveData() {
             const selectedDate = datePicker.value;
             if (!selectedDate || !currentUser) return;
 
-            // 收集表單資料
             const currentRecord = {
                 weight: weightInput.value,
                 breakfast: breakfastInput.value,
@@ -437,25 +536,19 @@
                 timestamp: new Date().getTime()
             };
 
-            // 儲存到當前使用者的資料庫間
             if (!healthData[currentUser]) healthData[currentUser] = {};
             healthData[currentUser][selectedDate] = currentRecord;
             
-            saveToLocalStorage();
+            await saveDataState(); // 同步儲存
 
-            // 顯示成功提示
-            showToast('紀錄已成功儲存！');
-
-            // 重新渲染歷史紀錄
+            showToast(isCloudActive ? '紀錄已儲存至雲端！' : '紀錄已成功儲存！');
             renderHistory();
         }
 
-        // 渲染歷史紀錄列表
         function renderHistory() {
             if (!healthData[currentUser]) healthData[currentUser] = {};
             const userData = healthData[currentUser];
             
-            // 取得所有有資料的日期，並由新到舊排序
             const dates = Object.keys(userData).sort((a, b) => new Date(b) - new Date(a));
             
             if (dates.length === 0) {
@@ -494,20 +587,17 @@
                 historyList.insertAdjacentHTML('beforeend', cardHTML);
             });
             
-            // 如果所有日期都是空紀錄，顯示無紀錄提示
             if (historyList.innerHTML === '') {
                  historyList.innerHTML = '<p class="text-center text-slate-400 py-6 text-sm">尚無紀錄，開始記錄你的健康生活吧！</p>';
             }
         }
 
-        // 點擊歷史紀錄卡片跳轉
-        window.jumpToDate = function(dateStr) {
+        function jumpToDate(dateStr) {
             datePicker.value = dateStr;
             loadDataForDate(dateStr);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // 提示訊息
         let toastTimeout;
         function showToast(message) {
             toastMessage.textContent = message;
@@ -519,7 +609,6 @@
             }, 3000);
         }
 
-        // 預防 XSS
         function escapeHTML(str) {
             if (!str) return '';
             return str.replace(/[&<>'"]/g, 
@@ -535,7 +624,6 @@
 
         /* --- 設定與行事曆功能 --- */
 
-        // 打開設定視窗
         function openSettings() {
             const settings = userSettings[currentUser] || {};
             document.getElementById('settingInjectionDay').value = settings.injectionDay !== undefined ? settings.injectionDay : 2;
@@ -543,27 +631,23 @@
             document.getElementById('settingsModal').classList.remove('hidden');
         }
 
-        // 關閉設定視窗
         function closeSettings() {
             document.getElementById('settingsModal').classList.add('hidden');
         }
 
-        // 儲存設定
-        function saveSettings() {
+        async function saveSettings() {
             if (!userSettings[currentUser]) userSettings[currentUser] = {};
             
             userSettings[currentUser].injectionDay = parseInt(document.getElementById('settingInjectionDay').value);
             userSettings[currentUser].injectionTime = document.getElementById('settingInjectionTime').value || '09:00';
             
-            saveToLocalStorage();
+            await saveDataState(); // 同步儲存
             closeSettings();
             showToast('設定已儲存！');
             
-            // 重新載入當前日期的顯示狀態 (更新提醒橫幅)
             loadDataForDate(datePicker.value);
         }
 
-        // 加入到手機行事曆 (.ics 檔案下載)
         function addToCalendar() {
             const settings = userSettings[currentUser] || {};
             const targetDateStr = datePicker.value;
@@ -573,16 +657,11 @@
             const [year, month, day] = targetDateStr.split('-');
             const [hours, minutes] = timeStr.split(':');
 
-            // 建立事件時間 (本地時間)
             const eventDate = new Date(year, month - 1, day, hours, minutes);
-            
-            // 轉為 UTC 時間格式 (ICS 規定格式 YYYYMMDDTHHMMSSZ)
             const startUTC = eventDate.toISOString().replace(/-|:|\.\d\d\d/g, '');
-            // 預設事件長度 30 分鐘
             const endEventDate = new Date(eventDate.getTime() + 30 * 60 * 1000);
             const endUTC = endEventDate.toISOString().replace(/-|:|\.\d\d\d/g, '');
 
-            // 產生 .ics 內容
             const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Health Tracker App//TW
@@ -599,7 +678,6 @@ END:VALARM
 END:VEVENT
 END:VCALENDAR`;
 
-            // 產生 Blob 物件觸發下載，手機瀏覽器通常會攔截並詢問是否加入行事曆
             const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
