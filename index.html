@@ -208,12 +208,15 @@
                     // 偵測到舊資料，將其歸類到具體使用者下
                     dates.forEach(date => {
                         const record = oldData[date];
-                        const u = record.user || '預設使用者';
-                        if (!users.includes(u)) users.push(u);
-                        if (!healthData[u]) healthData[u] = {};
-                        
-                        healthData[u][date] = { ...record };
-                        delete healthData[u][date].user; // 移除舊格式中的 user 欄位
+                        // 移除「預設使用者」邏輯，只遷移有明確名稱的舊紀錄
+                        if (record.user) {
+                            const u = record.user;
+                            if (!users.includes(u)) users.push(u);
+                            if (!healthData[u]) healthData[u] = {};
+                            
+                            healthData[u][date] = { ...record };
+                            delete healthData[u][date].user; // 移除舊格式中的 user 欄位
+                        }
                     });
                     saveToLocalStorage();
                 }
