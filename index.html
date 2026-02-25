@@ -29,14 +29,49 @@
 
     <!-- 頂部導覽列 -->
     <header class="bg-teal-600 text-white shadow-md sticky top-0 z-10">
-        <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-center">
-            <i class="fa-solid fa-notes-medical text-2xl mr-2"></i>
-            <h1 class="text-xl font-bold tracking-wide">每日健康紀錄</h1>
+        <div class="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center">
+                <i class="fa-solid fa-notes-medical text-2xl mr-2"></i>
+                <h1 class="text-xl font-bold tracking-wide" id="headerTitle">每日健康紀錄</h1>
+            </div>
+            <!-- 切換使用者按鈕 (預設隱藏，登入後顯示) -->
+            <button id="switchUserBtn" onclick="showUserScreen()" class="hidden text-sm bg-teal-700 hover:bg-teal-800 px-3 py-1.5 rounded-full transition-colors flex items-center">
+                <i class="fa-solid fa-right-from-bracket mr-1"></i>切換
+            </button>
         </div>
     </header>
 
-    <!-- 主要內容區 -->
-    <main class="max-w-md mx-auto px-4 mt-6 space-y-6">
+    <!-- 使用者選擇與創建畫面 -->
+    <div id="userScreen" class="max-w-md mx-auto px-4 mt-12 space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm p-8 border border-slate-200 text-center">
+            <div class="inline-block bg-teal-50 p-4 rounded-full mb-4">
+                <i class="fa-solid fa-users text-4xl text-teal-600"></i>
+            </div>
+            <h2 class="text-xl font-bold text-slate-700 mb-2">誰在使用這個 App？</h2>
+            <p class="text-slate-500 text-sm mb-6">請選擇你的身分，或建立一個新使用者。</p>
+            
+            <!-- 使用者列表 -->
+            <div id="userList" class="space-y-3 mb-6 max-h-48 overflow-y-auto px-1">
+                <!-- 動態產生使用者按鈕 -->
+            </div>
+
+            <!-- 新增使用者 -->
+            <div class="border-t border-slate-100 pt-6">
+                <p class="text-sm text-slate-600 font-medium mb-3 text-left">建立新使用者</p>
+                <div class="flex space-x-2">
+                    <input type="text" id="newUserName" placeholder="請輸入姓名..." 
+                           class="flex-1 border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-slate-50">
+                    <button onclick="createNewUser()" 
+                            class="bg-teal-600 hover:bg-teal-700 text-white px-5 py-2 rounded-lg font-medium transition-colors shadow-sm">
+                        新增
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主要內容區 (預設隱藏，登入後顯示) -->
+    <main id="appContainer" class="hidden max-w-md mx-auto px-4 mt-6 space-y-6">
         
         <!-- 星期二打針提醒 (動態顯示) -->
         <div id="injectionReminder" class="hidden bg-indigo-50 border-l-4 border-indigo-500 p-4 rounded-r-lg shadow-sm transition-all">
@@ -121,7 +156,6 @@
             </h2>
             <div id="historyList" class="space-y-4">
                 <!-- 歷史紀錄會透過 JavaScript 動態產生在這裡 -->
-                <p class="text-center text-slate-400 py-4 text-sm">尚無紀錄，開始記錄你的健康生活吧！</p>
             </div>
         </section>
     </main>
@@ -135,6 +169,13 @@
     <!-- 應用程式邏輯 -->
     <script>
         // DOM 元素選取
+        const userScreen = document.getElementById('userScreen');
+        const appContainer = document.getElementById('appContainer');
+        const userList = document.getElementById('userList');
+        const newUserNameInput = document.getElementById('newUserName');
+        const switchUserBtn = document.getElementById('switchUserBtn');
+        const headerTitle = document.getElementById('headerTitle');
+        
         const datePicker = document.getElementById('datePicker');
         const recordTitle = document.getElementById('recordTitle');
         const weightInput = document.getElementById('weight');
@@ -147,26 +188,138 @@
         const toastMessage = document.getElementById('toastMessage');
         const injectionReminder = document.getElementById('injectionReminder');
 
-        // 資料庫 (使用 localStorage)
-        let healthData = JSON.parse(localStorage.getItem('healthData')) || {};
+        // 資料庫與狀態
+        // healthData 結構: { "王小明": { "2023-10-25": {weight: 60, ...} }, "李小華": { ... } }
+        let healthData = {}; 
+        let users = [];
+        let currentUser = null;
 
-        // 初始化：設定日期為今天，並載入資料
-        function init() {
-            const today = new Date();
-            // 轉換為 YYYY-MM-DD 格式，考慮時區
-            const offset = today.getTimezoneOffset();
-            const localDate = new Date(today.getTime() - (offset*60*1000)).toISOString().split('T')[0];
-            
-            datePicker.value = localDate;
-            datePicker.max = localDate; // 不允許選擇未來的日期
-            
-            loadDataForDate(localDate);
-            renderHistory();
+        // 初始化系統
+        function initSystem() {
+            // 讀取 localStorage 內的資料
+            healthData = JSON.parse(localStorage.getItem('healthDataV2')) || {};
+            users = JSON.parse(localStorage.getItem('usersList')) || [];
+
+            // 資料遷移 (相容舊版本單一使用者的資料)
+            const oldData = JSON.parse(localStorage.getItem('healthData'));
+            if (oldData && !localStorage.getItem('healthDataV2')) {
+                const dates = Object.keys(oldData);
+                if (dates.length > 0 && dates[0].includes('-')) {
+                    // 偵測到舊資料，將其歸類到具體使用者下
+                    dates.forEach(date => {
+                        const record = oldData[date];
+                        const u = record.user || '預設使用者';
+                        if (!users.includes(u)) users.push(u);
+                        if (!healthData[u]) healthData[u] = {};
+                        
+                        healthData[u][date] = { ...record };
+                        delete healthData[u][date].user; // 移除舊格式中的 user 欄位
+                    });
+                    saveToLocalStorage();
+                }
+            }
+
+            // 檢查是否已有登入的紀錄
+            const lastUser = localStorage.getItem('currentUser');
+            if (lastUser && users.includes(lastUser)) {
+                login(lastUser);
+            } else {
+                showUserScreen();
+            }
 
             // 監聽日期變更
             datePicker.addEventListener('change', (e) => {
                 loadDataForDate(e.target.value);
             });
+        }
+
+        // 儲存所有資料到 LocalStorage
+        function saveToLocalStorage() {
+            localStorage.setItem('healthDataV2', JSON.stringify(healthData));
+            localStorage.setItem('usersList', JSON.stringify(users));
+        }
+
+        /* --- 使用者管理邏輯 --- */
+        
+        // 顯示使用者選擇畫面
+        function showUserScreen() {
+            currentUser = null;
+            localStorage.removeItem('currentUser');
+            
+            appContainer.classList.add('hidden');
+            switchUserBtn.classList.add('hidden');
+            headerTitle.textContent = '每日健康紀錄';
+            userScreen.classList.remove('hidden');
+
+            renderUserList();
+        }
+
+        // 渲染使用者列表按鈕
+        function renderUserList() {
+            userList.innerHTML = '';
+            if (users.length === 0) {
+                userList.innerHTML = '<p class="text-sm text-slate-400 py-2">目前尚無使用者，請先建立。</p>';
+                return;
+            }
+
+            users.forEach(user => {
+                const btnHTML = `
+                    <button onclick="login('${user}')" 
+                            class="w-full bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-700 font-medium py-3 px-4 rounded-xl border border-slate-200 transition-colors flex items-center justify-between group">
+                        <span class="flex items-center"><i class="fa-regular fa-user mr-3 text-slate-400 group-hover:text-teal-500"></i> ${escapeHTML(user)}</span>
+                        <i class="fa-solid fa-chevron-right text-slate-300 text-sm"></i>
+                    </button>
+                `;
+                userList.insertAdjacentHTML('beforeend', btnHTML);
+            });
+        }
+
+        // 創建新使用者
+        function createNewUser() {
+            const name = newUserNameInput.value.trim();
+            if (!name) {
+                alert("請輸入使用者姓名！");
+                return;
+            }
+            if (users.includes(name)) {
+                alert("該使用者已經存在了喔！");
+                return;
+            }
+
+            users.push(name);
+            healthData[name] = {}; // 初始化該使用者的資料區塊
+            saveToLocalStorage();
+            
+            newUserNameInput.value = '';
+            login(name); // 建立後直接登入
+        }
+
+        // 登入使用者並進入主畫面
+        function login(userName) {
+            currentUser = userName;
+            localStorage.setItem('currentUser', currentUser);
+            
+            userScreen.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            switchUserBtn.classList.remove('hidden');
+            headerTitle.textContent = `${currentUser} 的紀錄`;
+
+            initAppForUser();
+        }
+
+        /* --- 健康紀錄應用邏輯 --- */
+
+        // 初始化當前使用者的應用程式狀態
+        function initAppForUser() {
+            const today = new Date();
+            const offset = today.getTimezoneOffset();
+            const localDate = new Date(today.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+            
+            datePicker.value = localDate;
+            datePicker.max = localDate;
+            
+            loadDataForDate(localDate);
+            renderHistory();
         }
 
         // 載入特定日期的資料到表單中
@@ -179,7 +332,7 @@
                 injectionReminder.classList.add('hidden');
             }
 
-            // 更新標題顯示 (動態判斷是否為今天)
+            // 更新標題顯示
             const today = new Date();
             const offset = today.getTimezoneOffset();
             const todayStr = new Date(today.getTime() - (offset*60*1000)).toISOString().split('T')[0];
@@ -190,7 +343,10 @@
                 recordTitle.innerHTML = `<i class="fa-regular fa-calendar-check text-teal-500 mr-2"></i>${dateObj.getMonth() + 1}月${dateObj.getDate()}日 紀錄`;
             }
 
-            const data = healthData[dateStr];
+            // 確保該使用者有資料物件
+            if (!healthData[currentUser]) healthData[currentUser] = {};
+            
+            const data = healthData[currentUser][dateStr];
             if (data) {
                 weightInput.value = data.weight || '';
                 breakfastInput.value = data.breakfast || '';
@@ -198,7 +354,7 @@
                 dinnerInput.value = data.dinner || '';
                 exerciseInput.value = data.exercise || '';
             } else {
-                // 如果該日沒有資料，清空表單
+                // 清空表單
                 weightInput.value = '';
                 breakfastInput.value = '';
                 lunchInput.value = '';
@@ -210,7 +366,7 @@
         // 儲存資料
         function saveData() {
             const selectedDate = datePicker.value;
-            if (!selectedDate) return;
+            if (!selectedDate || !currentUser) return;
 
             // 收集表單資料
             const currentRecord = {
@@ -219,12 +375,14 @@
                 lunch: lunchInput.value,
                 dinner: dinnerInput.value,
                 exercise: exerciseInput.value,
-                timestamp: new Date().getTime() // 紀錄最後更新時間
+                timestamp: new Date().getTime()
             };
 
-            // 儲存到變數與 localStorage
-            healthData[selectedDate] = currentRecord;
-            localStorage.setItem('healthData', JSON.stringify(healthData));
+            // 儲存到當前使用者的資料庫間
+            if (!healthData[currentUser]) healthData[currentUser] = {};
+            healthData[currentUser][selectedDate] = currentRecord;
+            
+            saveToLocalStorage();
 
             // 顯示成功提示
             showToast('紀錄已成功儲存！');
@@ -235,23 +393,24 @@
 
         // 渲染歷史紀錄列表
         function renderHistory() {
+            if (!healthData[currentUser]) healthData[currentUser] = {};
+            const userData = healthData[currentUser];
+            
             // 取得所有有資料的日期，並由新到舊排序
-            const dates = Object.keys(healthData).sort((a, b) => new Date(b) - new Date(a));
+            const dates = Object.keys(userData).sort((a, b) => new Date(b) - new Date(a));
             
             if (dates.length === 0) {
-                historyList.innerHTML = '<p class="text-center text-slate-400 py-4 text-sm">尚無紀錄，開始記錄你的健康生活吧！</p>';
+                historyList.innerHTML = '<p class="text-center text-slate-400 py-6 text-sm">尚無紀錄，開始記錄你的健康生活吧！</p>';
                 return;
             }
 
-            historyList.innerHTML = ''; // 清空現有列表
+            historyList.innerHTML = '';
 
             dates.forEach(date => {
-                const data = healthData[date];
-                // 檢查是否有填寫任何內容
+                const data = userData[date];
                 const hasContent = data.weight || data.breakfast || data.lunch || data.dinner || data.exercise;
-                if (!hasContent) return; // 空紀錄不顯示
+                if (!hasContent) return;
 
-                // 格式化日期 (加入星期幾的顯示)
                 const dateObj = new Date(date);
                 const daysOfWeek = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
                 const dayName = daysOfWeek[dateObj.getDay()];
@@ -275,17 +434,21 @@
                 `;
                 historyList.insertAdjacentHTML('beforeend', cardHTML);
             });
+            
+            // 如果所有日期都是空紀錄，顯示無紀錄提示
+            if (historyList.innerHTML === '') {
+                 historyList.innerHTML = '<p class="text-center text-slate-400 py-6 text-sm">尚無紀錄，開始記錄你的健康生活吧！</p>';
+            }
         }
 
-        // 點擊歷史紀錄卡片，跳轉至該日期
+        // 點擊歷史紀錄卡片跳轉
         window.jumpToDate = function(dateStr) {
             datePicker.value = dateStr;
             loadDataForDate(dateStr);
-            // 平滑滾動到頂部
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // 顯示浮動提示 (Toast) 的功能
+        // 提示訊息
         let toastTimeout;
         function showToast(message) {
             toastMessage.textContent = message;
@@ -297,8 +460,9 @@
             }, 3000);
         }
 
-        // 預防 XSS 攻擊的基本 HTML 逸出函數
+        // 預防 XSS
         function escapeHTML(str) {
+            if (!str) return '';
             return str.replace(/[&<>'"]/g, 
                 tag => ({
                     '&': '&amp;',
@@ -310,8 +474,8 @@
             );
         }
 
-        // 網頁載入完成後執行初始化
-        document.addEventListener('DOMContentLoaded', init);
+        // 網頁載入完成後啟動系統
+        document.addEventListener('DOMContentLoaded', initSystem);
 
     </script>
 </body>
