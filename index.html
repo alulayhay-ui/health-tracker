@@ -52,7 +52,7 @@
         <!-- 輸入區卡片 -->
         <section class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
             <div class="flex items-center justify-between mb-5">
-                <h2 class="text-lg font-semibold text-slate-700 flex items-center">
+                <h2 id="recordTitle" class="text-lg font-semibold text-slate-700 flex items-center">
                     <i class="fa-regular fa-calendar-check text-teal-500 mr-2"></i>
                     今日紀錄
                 </h2>
@@ -136,6 +136,7 @@
     <script>
         // DOM 元素選取
         const datePicker = document.getElementById('datePicker');
+        const recordTitle = document.getElementById('recordTitle');
         const weightInput = document.getElementById('weight');
         const breakfastInput = document.getElementById('breakfast');
         const lunchInput = document.getElementById('lunch');
@@ -176,6 +177,17 @@
                 injectionReminder.classList.remove('hidden');
             } else {
                 injectionReminder.classList.add('hidden');
+            }
+
+            // 更新標題顯示 (動態判斷是否為今天)
+            const today = new Date();
+            const offset = today.getTimezoneOffset();
+            const todayStr = new Date(today.getTime() - (offset*60*1000)).toISOString().split('T')[0];
+            
+            if (dateStr === todayStr) {
+                recordTitle.innerHTML = '<i class="fa-regular fa-calendar-check text-teal-500 mr-2"></i>今日紀錄';
+            } else {
+                recordTitle.innerHTML = `<i class="fa-regular fa-calendar-check text-teal-500 mr-2"></i>${dateObj.getMonth() + 1}月${dateObj.getDate()}日 紀錄`;
             }
 
             const data = healthData[dateStr];
