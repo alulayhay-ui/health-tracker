@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firebase 雲端同步測試</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    input, button { padding: 10px; font-size: 16px; margin-top: 10px; }
+    ul { background: #f0f0f0; padding: 20px; border-radius: 8px; }
+    li { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+
+  <h1>☁️ 雲端同步留言板</h1>
+  
+  <!-- 輸入區塊 -->
+  <input type="text" id="myData" placeholder="輸入你想儲存的資料...">
+  <button id="saveBtn">儲存到雲端</button>
+
+  <!-- 顯示區塊 -->
+  <h2>雲端資料列表：</h2>
+  <ul id="dataList">
+    <li>載入中...</li>
+  </ul>
+
+  <!-- 💡 注意這裡：使用 type="module" 來載入 Firebase -->
+  <script type="module">
+    // 1. 從 Google 的 CDN 載入 Firebase 核心模組與 Firestore 資料庫模組
+    import { initializeApp } from "[https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js](https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js)";
+    import { getFirestore, collection, addDoc, onSnapshot } from "[https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js](https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js)";
+
+    // 2. 🔑 貼上你的 Firebase 設定檔 (請替換成你自己的！)
+    const firebaseConfig = {
+  apiKey: "AIzaSyBrvAER_IfgkKAXYfG8H0fKfZApnjSn3xY",
+  authDomain: "life-363cf.firebaseapp.com",
+  projectId: "life-363cf",
+  storageBucket: "life-363cf.firebasestorage.app",
+  messagingSenderId: "436603604042",
+  appId: "1:436603604042:web:63450418cafae0eac5aab3",
+  measurementId: "G-03RB8XK76V"
+};
+
+    // 3. 初始化 Firebase 與 Firestore 資料庫
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // 我們要在資料庫中建立一個名為 "messages" 的集合 (Collection)
+    const messagesCollection = collection(db, "messages");
+
+    // ==========================================
+    // 🚀 功能 A：將資料寫入雲端 (點擊按鈕時)
+    // ==========================================
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const inputElement = document.getElementById('myData');
+      const textValue = inputElement.value;
+
+      if (textValue.trim() !== "") {
+        try {
+          // 使用 addDoc 將資料新增到 "messages" 集合中
+          await addDoc(messagesCollection, {
+            text: textValue,
+            timestamp: new Date() // 記錄時間
+          });
+          inputElement.value = ''; // 儲存成功後清空輸入框
+          console.log("資料儲存成功！");
+        } catch (error) {
+          console.error("儲存失敗：", error);
+          alert("儲存失敗，請檢查設定或安全規則！");
+        }
+      }
+    });
+
+    // ==========================================
+    // 🔄 功能 B：全自動同步讀取資料 (即時更新)
+    // ==========================================
+    // onSnapshot 會一直「盯著」雲端資料庫，只要有變更就會自動執行這段程式
+    onSnapshot(messagesCollection, (snapshot) => {
+      const listElement = document.getElementById('dataList');
+      listElement.innerHTML = ''; // 先清空目前的列表
+
+      // 檢查資料庫是不是空的
+      if (snapshot.empty) {
+        listElement.innerHTML = '<li>目前還沒有資料喔！</li>';
+        return;
+      }
+
+      // 把資料庫裡面的每一筆資料抓出來，變成 <li> 顯示在網頁上
+      snapshot.forEach((doc) => {
+        const data = doc.data(); // 取得資料內容
+        const li = document.createElement('li');
+        li.textContent = data.text; 
+        listElement.appendChild(li);
+      });
+    });
+  </script>
+</body>
+</html>
