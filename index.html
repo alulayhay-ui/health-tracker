@@ -34,10 +34,15 @@
                 <i class="fa-solid fa-notes-medical text-2xl mr-2"></i>
                 <h1 class="text-xl font-bold tracking-wide" id="headerTitle">每日健康紀錄</h1>
             </div>
-            <!-- 切換使用者按鈕 (預設隱藏，登入後顯示) -->
-            <button id="switchUserBtn" onclick="showUserScreen()" class="hidden text-sm bg-teal-700 hover:bg-teal-800 px-3 py-1.5 rounded-full transition-colors flex items-center">
-                <i class="fa-solid fa-right-from-bracket mr-1"></i>切換
-            </button>
+            <!-- 切換使用者按鈕與設定按鈕 (預設隱藏，登入後顯示) -->
+            <div class="flex space-x-2">
+                <button id="settingsBtn" onclick="openSettings()" class="hidden text-sm bg-teal-700 hover:bg-teal-800 px-3 py-1.5 rounded-full transition-colors flex items-center" title="個人設定">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <button id="switchUserBtn" onclick="showUserScreen()" class="hidden text-sm bg-teal-700 hover:bg-teal-800 px-3 py-1.5 rounded-full transition-colors flex items-center">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i>切換
+                </button>
+            </div>
         </div>
     </header>
 
@@ -73,14 +78,19 @@
     <!-- 主要內容區 (預設隱藏，登入後顯示) -->
     <main id="appContainer" class="hidden max-w-md mx-auto px-4 mt-6 space-y-6">
         
-        <!-- 星期二打針提醒 (動態顯示) -->
-        <div id="injectionReminder" class="hidden bg-indigo-50 border-l-4 border-indigo-500 p-4 rounded-r-lg shadow-sm transition-all">
-            <div class="flex items-center">
-                <i class="fa-solid fa-syringe text-indigo-500 text-2xl mr-3"></i>
-                <div>
-                    <h3 class="text-indigo-800 font-bold text-sm">溫馨提醒</h3>
-                    <p class="text-indigo-600 text-sm mt-0.5">今天是星期二，請記得要打針喔！</p>
+        <!-- 打針提醒 (動態顯示) -->
+        <div id="injectionReminder" class="hidden bg-indigo-50 border-l-4 border-indigo-500 p-4 rounded-r-lg shadow-sm transition-all mb-6">
+            <div class="flex items-center justify-between w-full">
+                <div class="flex items-center">
+                    <i class="fa-solid fa-syringe text-indigo-500 text-2xl mr-3"></i>
+                    <div>
+                        <h3 class="text-indigo-800 font-bold text-sm">打針提醒</h3>
+                        <p id="reminderText" class="text-indigo-600 text-sm mt-0.5">今天是您的打針日！</p>
+                    </div>
                 </div>
+                <button onclick="addToCalendar()" class="shrink-0 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ml-3 flex items-center shadow-sm">
+                    <i class="fa-regular fa-calendar-plus mr-1"></i> 加入行事曆
+                </button>
             </div>
         </div>
 
@@ -166,6 +176,38 @@
         <span id="toastMessage">儲存成功！</span>
     </div>
 
+    <!-- 使用者設定 Modal (彈出視窗) -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 transform transition-all">
+            <h2 class="text-xl font-bold text-slate-800 mb-4 flex items-center">
+                <i class="fa-solid fa-gear text-teal-600 mr-2"></i> 個人設定
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">每週打針提醒日</label>
+                    <select id="settingInjectionDay" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                        <option value="-1">關閉提醒</option>
+                        <option value="0">星期日</option>
+                        <option value="1">星期一</option>
+                        <option value="2">星期二</option>
+                        <option value="3">星期三</option>
+                        <option value="4">星期四</option>
+                        <option value="5">星期五</option>
+                        <option value="6">星期六</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">預定打針時間</label>
+                    <input type="time" id="settingInjectionTime" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                </div>
+            </div>
+            <div class="flex space-x-3 mt-6">
+                <button onclick="closeSettings()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl transition-colors">取消</button>
+                <button onclick="saveSettings()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-xl transition-colors">儲存</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 應用程式邏輯 -->
     <script>
         // DOM 元素選取
@@ -174,6 +216,7 @@
         const userList = document.getElementById('userList');
         const newUserNameInput = document.getElementById('newUserName');
         const switchUserBtn = document.getElementById('switchUserBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
         const headerTitle = document.getElementById('headerTitle');
         
         const datePicker = document.getElementById('datePicker');
@@ -187,11 +230,13 @@
         const toast = document.getElementById('toast');
         const toastMessage = document.getElementById('toastMessage');
         const injectionReminder = document.getElementById('injectionReminder');
+        const reminderText = document.getElementById('reminderText');
 
         // 資料庫與狀態
         // healthData 結構: { "王小明": { "2023-10-25": {weight: 60, ...} }, "李小華": { ... } }
         let healthData = {}; 
         let users = [];
+        let userSettings = {}; 
         let currentUser = null;
 
         // 初始化系統
@@ -199,6 +244,7 @@
             // 讀取 localStorage 內的資料
             healthData = JSON.parse(localStorage.getItem('healthDataV2')) || {};
             users = JSON.parse(localStorage.getItem('usersList')) || [];
+            userSettings = JSON.parse(localStorage.getItem('userSettings')) || {};
 
             // 資料遷移 (相容舊版本單一使用者的資料)
             const oldData = JSON.parse(localStorage.getItem('healthData'));
@@ -240,6 +286,7 @@
         function saveToLocalStorage() {
             localStorage.setItem('healthDataV2', JSON.stringify(healthData));
             localStorage.setItem('usersList', JSON.stringify(users));
+            localStorage.setItem('userSettings', JSON.stringify(userSettings));
         }
 
         /* --- 使用者管理邏輯 --- */
@@ -251,6 +298,7 @@
             
             appContainer.classList.add('hidden');
             switchUserBtn.classList.add('hidden');
+            settingsBtn.classList.add('hidden');
             headerTitle.textContent = '每日健康紀錄';
             userScreen.classList.remove('hidden');
 
@@ -305,6 +353,7 @@
             userScreen.classList.add('hidden');
             appContainer.classList.remove('hidden');
             switchUserBtn.classList.remove('hidden');
+            settingsBtn.classList.remove('hidden');
             headerTitle.textContent = `${currentUser} 的紀錄`;
 
             initAppForUser();
@@ -327,10 +376,17 @@
 
         // 載入特定日期的資料到表單中
         function loadDataForDate(dateStr) {
-            // 檢查是否為星期二 (0=星期日, 1=星期一, 2=星期二...)
+            // 檢查是否為設定的打針日
             const dateObj = new Date(dateStr);
-            if (dateObj.getDay() === 2) {
+            const settings = userSettings[currentUser] || {};
+            
+            // 預設打針日為星期二 (2)，如果有設定則讀取設定。-1 代表關閉提醒
+            const injectionDay = settings.injectionDay !== undefined ? parseInt(settings.injectionDay) : 2;
+            const injectionTime = settings.injectionTime || '09:00';
+
+            if (injectionDay !== -1 && dateObj.getDay() === injectionDay) {
                 injectionReminder.classList.remove('hidden');
+                reminderText.textContent = `今天是您的打針日！(預定時間: ${injectionTime})`;
             } else {
                 injectionReminder.classList.add('hidden');
             }
@@ -475,6 +531,82 @@
                     '"': '&quot;'
                 }[tag] || tag)
             );
+        }
+
+        /* --- 設定與行事曆功能 --- */
+
+        // 打開設定視窗
+        function openSettings() {
+            const settings = userSettings[currentUser] || {};
+            document.getElementById('settingInjectionDay').value = settings.injectionDay !== undefined ? settings.injectionDay : 2;
+            document.getElementById('settingInjectionTime').value = settings.injectionTime || '09:00';
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        // 關閉設定視窗
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        // 儲存設定
+        function saveSettings() {
+            if (!userSettings[currentUser]) userSettings[currentUser] = {};
+            
+            userSettings[currentUser].injectionDay = parseInt(document.getElementById('settingInjectionDay').value);
+            userSettings[currentUser].injectionTime = document.getElementById('settingInjectionTime').value || '09:00';
+            
+            saveToLocalStorage();
+            closeSettings();
+            showToast('設定已儲存！');
+            
+            // 重新載入當前日期的顯示狀態 (更新提醒橫幅)
+            loadDataForDate(datePicker.value);
+        }
+
+        // 加入到手機行事曆 (.ics 檔案下載)
+        function addToCalendar() {
+            const settings = userSettings[currentUser] || {};
+            const targetDateStr = datePicker.value;
+            if (!targetDateStr) return;
+
+            const timeStr = settings.injectionTime || '09:00';
+            const [year, month, day] = targetDateStr.split('-');
+            const [hours, minutes] = timeStr.split(':');
+
+            // 建立事件時間 (本地時間)
+            const eventDate = new Date(year, month - 1, day, hours, minutes);
+            
+            // 轉為 UTC 時間格式 (ICS 規定格式 YYYYMMDDTHHMMSSZ)
+            const startUTC = eventDate.toISOString().replace(/-|:|\.\d\d\d/g, '');
+            // 預設事件長度 30 分鐘
+            const endEventDate = new Date(eventDate.getTime() + 30 * 60 * 1000);
+            const endUTC = endEventDate.toISOString().replace(/-|:|\.\d\d\d/g, '');
+
+            // 產生 .ics 內容
+            const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Health Tracker App//TW
+BEGIN:VEVENT
+DTSTART:${startUTC}
+DTEND:${endUTC}
+SUMMARY:💉 打針提醒 (${currentUser})
+DESCRIPTION:每日健康紀錄 App 提醒您今天 (${targetDateStr}) 到了設定的打針時間。
+BEGIN:VALARM
+TRIGGER:-PT15M
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+END:VALARM
+END:VEVENT
+END:VCALENDAR`;
+
+            // 產生 Blob 物件觸發下載，手機瀏覽器通常會攔截並詢問是否加入行事曆
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = `Injection_${targetDateStr}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // 網頁載入完成後啟動系統
