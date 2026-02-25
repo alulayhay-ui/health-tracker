@@ -251,9 +251,11 @@
                 const hasContent = data.weight || data.breakfast || data.lunch || data.dinner || data.exercise;
                 if (!hasContent) return; // 空紀錄不顯示
 
-                // 格式化日期 (例如: 2023-10-25 -> 10月25日)
+                // 格式化日期 (加入星期幾的顯示)
                 const dateObj = new Date(date);
-                const displayDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+                const daysOfWeek = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+                const dayName = daysOfWeek[dateObj.getDay()];
+                const displayDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日 (${dayName})`;
 
                 const cardHTML = `
                     <div class="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:shadow-md transition-shadow cursor-pointer" onclick="jumpToDate('${date}')">
