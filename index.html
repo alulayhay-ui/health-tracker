@@ -38,6 +38,17 @@
     <!-- 主要內容區 -->
     <main class="max-w-md mx-auto px-4 mt-6 space-y-6">
         
+        <!-- 星期二打針提醒 (動態顯示) -->
+        <div id="injectionReminder" class="hidden bg-indigo-50 border-l-4 border-indigo-500 p-4 rounded-r-lg shadow-sm transition-all">
+            <div class="flex items-center">
+                <i class="fa-solid fa-syringe text-indigo-500 text-2xl mr-3"></i>
+                <div>
+                    <h3 class="text-indigo-800 font-bold text-sm">溫馨提醒</h3>
+                    <p class="text-indigo-600 text-sm mt-0.5">今天是星期二，請記得要打針喔！</p>
+                </div>
+            </div>
+        </div>
+
         <!-- 輸入區卡片 -->
         <section class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
             <div class="flex items-center justify-between mb-5">
@@ -133,6 +144,7 @@
         const historyList = document.getElementById('historyList');
         const toast = document.getElementById('toast');
         const toastMessage = document.getElementById('toastMessage');
+        const injectionReminder = document.getElementById('injectionReminder');
 
         // 資料庫 (使用 localStorage)
         let healthData = JSON.parse(localStorage.getItem('healthData')) || {};
@@ -158,6 +170,14 @@
 
         // 載入特定日期的資料到表單中
         function loadDataForDate(dateStr) {
+            // 檢查是否為星期二 (0=星期日, 1=星期一, 2=星期二...)
+            const dateObj = new Date(dateStr);
+            if (dateObj.getDay() === 2) {
+                injectionReminder.classList.remove('hidden');
+            } else {
+                injectionReminder.classList.add('hidden');
+            }
+
             const data = healthData[dateStr];
             if (data) {
                 weightInput.value = data.weight || '';
