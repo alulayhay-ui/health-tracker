@@ -276,22 +276,15 @@
             // 嘗試連線雲端資料庫 (相容於 Canvas 環境)
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 try {
-                    const firebaseConfig = JSON.parse(__firebase_config);
-                    const app = initializeApp(firebaseConfig);
-                    const auth = getAuth(app);
-                    db = getFirestore(app);
-                    appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                    isCloudActive = true;
-
-                    // 監聽身分驗證狀態
-                    onAuthStateChanged(auth, async (user) => {
-                        if (user) {
-                            currentUserId = user.uid;
-                            cloudStatusIcon.classList.remove('hidden');
-                            await loadDataState();
-                            finishLoading();
-                        }
-                    });
+                    const firebaseConfig = {
+  apiKey: "AIzaSyBrvAER_IfgkKAXYfG8H0fKfZApnjSn3xY",
+  authDomain: "life-363cf.firebaseapp.com",
+  projectId: "life-363cf",
+  storageBucket: "life-363cf.firebasestorage.app",
+  messagingSenderId: "436603604042",
+  appId: "1:436603604042:web:63450418cafae0eac5aab3",
+  measurementId: "G-03RB8XK76V"
+};
 
                     // 執行登入
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
